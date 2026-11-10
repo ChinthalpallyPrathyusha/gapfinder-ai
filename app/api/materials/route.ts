@@ -34,6 +34,12 @@ export async function DELETE(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const documentId = searchParams.get("id");
+  const clearAll = searchParams.get("all") === "true";
+
+  if (clearAll) {
+    await repo.clearAllUserData(session.userId);
+    return NextResponse.json({ success: true, message: "All documents and topics cleared" });
+  }
 
   if (!documentId) {
     return NextResponse.json({ error: "Document ID is required" }, { status: 400 });

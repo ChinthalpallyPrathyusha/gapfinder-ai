@@ -16,12 +16,48 @@ import { RetrievalChunk } from "../retrieval/hybrid";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 
-export const STRONG_MODEL = "llama-3.3-70b-versatile";
-export const FAST_MODEL = "llama-3.1-8b-instant";
+export const STRONG_MODELS = [
+  process.env.GROQ_STRONG_MODEL,
+  "qwen/qwen3.8-27b",
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+].filter(Boolean) as string[];
+
+export const FAST_MODELS = [
+  process.env.GROQ_FAST_MODEL,
+  "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b",
+].filter(Boolean) as string[];
+
+export const STRONG_MODEL = STRONG_MODELS[0];
+export const FAST_MODEL = FAST_MODELS[0];
 
 export function getGroqProvider() {
   if (!GROQ_API_KEY) return null;
   return createGroq({ apiKey: GROQ_API_KEY });
+}
+
+async function generateObjectWithFallback<T>(
+  models: string[],
+  schema: any,
+  prompt: string
+): Promise<{ object: T }> {
+  const groq = getGroqProvider();
+  if (!groq) throw new Error("Groq API key not provided");
+  let lastError: any = null;
+  for (const modelName of models) {
+    try {
+      return await generateObject({
+        model: groq(modelName),
+        schema,
+        prompt,
+      });
+    } catch (err: any) {
+      console.warn(`Groq model ${modelName} call failed, trying next candidate:`, err?.message || err);
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -31,26 +67,25 @@ export async function generateTopicTreeFromSyllabus(syllabusText: string) {
   const groq = getGroqProvider();
 
   if (!groq) {
-    // Intelligent deterministic heuristic parser for syllabus headings
     return parseSyllabusHeuristically(syllabusText);
   }
 
   try {
-    const { object } = await generateObject({
-      model: groq(STRONG_MODEL),
-      schema: TopicTreeSchema,
-      prompt: `You are an expert curriculum analyzer. Parse the following syllabus into a structured list of main topics and subtopics.
+    const { object } = await generateObjectWithFallback<any>(
+      STRONG_MODELS,
+      TopicTreeSchema,
+      `You are an expert curriculum analyzer. Parse the following syllabus into a structured list of main topics and subtopics.
 For each topic:
 1. Estimate examImportance (1 to 10, where 10 is critical core topics).
 2. Estimate examFrequency (estimated typical question occurrences in past exams, 1 to 15).
 
 SYLLABUS CONTENT:
 ${syllabusText.slice(0, 15000)}
-`,
-    });
+`
+    );
     return object.topics;
   } catch (err) {
-    console.warn("Groq generation failed, using heuristic parser fallback:", err);
+    console.warn("Groq syllabus parsing failed, using heuristic parser fallback:", err);
     return parseSyllabusHeuristically(syllabusText);
   }
 }
@@ -63,6 +98,10 @@ export async function generateQuizQuestionsFromChunks(
   questionCount: number = 5,
   difficulty: "easy" | "medium" | "hard" = "medium"
 ) {
+  if (!chunks || chunks.length === 0) {
+    return [];
+  }
+
   const groq = getGroqProvider();
 
   // If no Groq key, use heuristic generator that extracts verified facts from chunks
@@ -80,10 +119,10 @@ ${c.content}
 `).join("\n---");
 
   try {
-    const { object } = await generateObject({
-      model: groq(STRONG_MODEL),
-      schema: QuizGenerationSchema,
-      prompt: `You are a rigorous diagnostic examiner for GapFinder AI.
+    const { object } = await generateObjectWithFallback<any>(
+      STRONG_MODELS,
+      QuizGenerationSchema,
+      `You are a rigorous diagnostic examiner for GapFinder AI.
 Your task is to generate EXACTLY ${questionCount} diagnostic questions based SOLELY on the retrieved context below.
 
 STRICT GROUNDING RULES:
@@ -98,12 +137,12 @@ STRICT GROUNDING RULES:
 
 RETRIEVED PASSAGES:
 ${contextBlocks}
-`,
-    });
+`
+    );
 
     // Post-generation grounding validation: ensure cited chunk IDs actually exist
     const validChunkIds = new Set(chunks.map((c) => c.id));
-    const validatedQuestions = object.questions.filter((q) => {
+    const validatedQuestions = object.questions.filter((q: any) => {
       return validChunkIds.has(q.sourceChunkId) || chunks.length > 0;
     });
 
@@ -148,10 +187,10 @@ export async function evaluateStudentAnswer(
   }
 
   try {
-    const { object } = await generateObject({
-      model: groq(FAST_MODEL),
-      schema: AnswerEvaluationSchema,
-      prompt: `You are an empathetic, precise teacher evaluating a student's test response.
+    const { object } = await generateObjectWithFallback<any>(
+      FAST_MODELS,
+      AnswerEvaluationSchema,
+      `You are an empathetic, precise teacher evaluating a student's test response.
 Compare the student's answer against the verified source ground truth.
 
 QUESTION: ${questionPrompt}
@@ -163,8 +202,8 @@ GUIDELINES:
 - Grade fairly: 1.0 = fully correct/covers key concepts; 0.5 = partial understanding/missing key term; 0.0 = incorrect or off-topic.
 - Explain clearly what part they got right or what conceptual mistake they made.
 - Identify the specific misconception.
-`,
-    });
+`
+    );
     return object;
   } catch (err) {
     console.warn("LLM evaluation failed, using heuristic grading:", err);
@@ -206,10 +245,10 @@ ${c.content}
   }
 
   try {
-    const { object } = await generateObject({
-      model: groq(STRONG_MODEL),
-      schema: ExplainerResponseSchema,
-      prompt: `You are the GapFinder AI Student Tutor.
+    const { object } = await generateObjectWithFallback<any>(
+      STRONG_MODELS,
+      ExplainerResponseSchema,
+      `You are the GapFinder AI Student Tutor.
 Answer the student's query using ONLY the provided retrieved material.
 
 RULES:
@@ -224,8 +263,8 @@ ${studentQuery}
 
 RETRIEVED CONTEXT:
 ${passagesText}
-`,
-    });
+`
+    );
 
     return object;
   } catch (err) {
@@ -311,20 +350,11 @@ function generateQuestionsHeuristically(
   count: number,
   difficulty: "easy" | "medium" | "hard"
 ) {
+  if (!chunks || chunks.length === 0) {
+    return [];
+  }
   const result: any[] = [];
-  const safeChunks = chunks.length > 0 ? chunks : [{
-    id: "sample_chunk_1",
-    documentId: "doc_1",
-    docTitle: "Core Syllabus",
-    docType: "notes" as const,
-    chapter: "Chapter 1: Foundations",
-    section: "Section 1.1",
-    page: 1,
-    chunkIndex: 0,
-    citation: "Foundations Notes, Ch 1, p.1",
-    content: "The fundamental unit of structure and function in living organisms is the cell. Photosynthesis converts light energy into chemical energy stored in glucose molecules.",
-    topicId: "topic_1",
-  }];
+  const safeChunks = chunks;
 
   for (let i = 0; i < count; i++) {
     const chunk = safeChunks[i % safeChunks.length];

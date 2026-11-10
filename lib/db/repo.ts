@@ -62,11 +62,41 @@ export const repo = {
   async deleteDocument(id: string, userId: string) {
     if (isDbConnected() && db) {
       await db.delete(schema.documents).where(and(eq(schema.documents.id, id), eq(schema.documents.userId, userId)));
+      const remaining = await db.select().from(schema.documents).where(eq(schema.documents.userId, userId));
+      const hasSyllabus = remaining.some((d) => d.docType === "syllabus");
+      if (!hasSyllabus && remaining.length === 0) {
+        await db.delete(schema.topics).where(eq(schema.topics.userId, userId));
+      }
       return true;
     }
     memoryStore.documents.delete(id);
     for (const [chunkId, chunk] of memoryStore.documentChunks.entries()) {
       if (chunk.documentId === id) memoryStore.documentChunks.delete(chunkId);
+    }
+    const remaining = Array.from(memoryStore.documents.values()).filter(d => d.userId === userId);
+    if (remaining.length === 0) {
+      for (const [topId, top] of memoryStore.topics.entries()) {
+        if (top.userId === userId) memoryStore.topics.delete(topId);
+      }
+    }
+    return true;
+  },
+
+  async clearAllUserData(userId: string) {
+    if (isDbConnected() && db) {
+      await db.delete(schema.documents).where(eq(schema.documents.userId, userId));
+      await db.delete(schema.documentChunks).where(eq(schema.documentChunks.userId, userId));
+      await db.delete(schema.topics).where(eq(schema.topics.userId, userId));
+      return true;
+    }
+    for (const [docId, doc] of memoryStore.documents.entries()) {
+      if (doc.userId === userId) memoryStore.documents.delete(docId);
+    }
+    for (const [chunkId, chunk] of memoryStore.documentChunks.entries()) {
+      if (chunk.userId === userId) memoryStore.documentChunks.delete(chunkId);
+    }
+    for (const [topId, top] of memoryStore.topics.entries()) {
+      if (top.userId === userId) memoryStore.topics.delete(topId);
     }
     return true;
   },
@@ -90,6 +120,15 @@ export const repo = {
     return Array.from(memoryStore.documentChunks.values()).filter(c => c.userId === userId);
   },
 
+  async updateChunkTopic(chunkId: string, topicId: string) {
+    if (isDbConnected() && db) {
+      await db.update(schema.documentChunks).set({ topicId }).where(eq(schema.documentChunks.id, chunkId));
+      return;
+    }
+    const c = memoryStore.documentChunks.get(chunkId);
+    if (c) memoryStore.documentChunks.set(chunkId, { ...c, topicId });
+  },
+
   // Topics
   async saveTopics(topicsList: any[]) {
     if (topicsList.length === 0) return;
@@ -99,6 +138,32 @@ export const repo = {
     }
     for (const t of topicsList) {
       memoryStore.topics.set(t.id, { ...t, createdAt: new Date() });
+    }
+  },
+
+  async replaceTopicsForUser(userId: string, topicsList: any[]) {
+    if (isDbConnected() && db) {
+      await db.delete(schema.topics).where(eq(schema.topics.userId, userId));
+      if (topicsList.length > 0) {
+        await db.insert(schema.topics).values(topicsList).onConflictDoNothing();
+      }
+      return;
+    }
+    for (const [id, t] of memoryStore.topics.entries()) {
+      if (t.userId === userId) memoryStore.topics.delete(id);
+    }
+    for (const t of topicsList) {
+      memoryStore.topics.set(t.id, { ...t, createdAt: new Date() });
+    }
+  },
+
+  async deleteTopicsByUser(userId: string) {
+    if (isDbConnected() && db) {
+      await db.delete(schema.topics).where(eq(schema.topics.userId, userId));
+      return;
+    }
+    for (const [id, t] of memoryStore.topics.entries()) {
+      if (t.userId === userId) memoryStore.topics.delete(id);
     }
   },
 

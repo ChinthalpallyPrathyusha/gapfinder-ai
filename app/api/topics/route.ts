@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       }
 
       const parsed = await generateTopicTreeFromSyllabus(syllabusDoc.rawContent);
-      const topicsToSave = parsed.map((t, idx) => ({
+      const topicsToSave = parsed.map((t: any, idx: number) => ({
         id: `top_${Date.now()}_${idx + 1}`,
         userId: session.userId,
         title: t.title,
@@ -62,7 +62,22 @@ export async function POST(req: Request) {
         examFrequency: t.examFrequency || 4,
       }));
 
-      await repo.saveTopics(topicsToSave);
+      await repo.replaceTopicsForUser(session.userId, topicsToSave);
+
+      // Map existing chunks to new topics
+      const allChunks = await repo.getChunksByUser(session.userId);
+      for (const c of allChunks) {
+        const matching = topicsToSave.find(
+          (t: any) =>
+            c.content.toLowerCase().includes(t.title.toLowerCase()) ||
+            c.citation.toLowerCase().includes(t.title.toLowerCase()) ||
+            t.title.toLowerCase().split(" ").some((w: string) => w.length > 3 && c.content.toLowerCase().includes(w))
+        );
+        if (matching && c.topicId !== matching.id) {
+          await repo.updateChunkTopic(c.id, matching.id);
+        }
+      }
+
       return NextResponse.json({ success: true, count: topicsToSave.length, topics: topicsToSave });
     }
 
@@ -71,4 +86,14 @@ export async function POST(req: Request) {
     console.error("Topic route error:", err);
     return NextResponse.json({ error: err.message || "Failed to process topics" }, { status: 500 });
   }
+}
+
+export async function DELETE() {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await repo.deleteTopicsByUser(session.userId);
+  return NextResponse.json({ success: true, message: "Topic map cleared" });
 }

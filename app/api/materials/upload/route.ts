@@ -98,26 +98,42 @@ export async function POST(req: Request) {
 
     // 2. Perform Structure-Aware Chunking
     const rawChunks = chunkDocument(documentId, title, docType, textContent);
-    const chunks = rawChunks.map((c) => ({
-      ...c,
-      userId: session.userId,
-      docType: c.metadata.docType,
-      chapter: c.metadata.chapter,
-      section: c.metadata.section,
-      page: c.metadata.page,
-      chunkIndex: c.metadata.chunkIndex,
-      citation: c.metadata.citation,
-    }));
+    // Tag chunks with existing user topics if available
+    const existingUserTopics = await repo.getTopicsByUser(session.userId);
+    const chunks = rawChunks.map((c) => {
+      let matchedTopicId: string | undefined = undefined;
+      if (existingUserTopics.length > 0) {
+        const found = existingUserTopics.find(
+          (t: any) =>
+            c.content.toLowerCase().includes(t.title.toLowerCase()) ||
+            c.metadata.citation.toLowerCase().includes(t.title.toLowerCase()) ||
+            t.title.toLowerCase().split(" ").some((w: string) => w.length > 3 && c.content.toLowerCase().includes(w))
+        );
+        if (found) matchedTopicId = found.id;
+      }
+
+      return {
+        ...c,
+        userId: session.userId,
+        docType: c.metadata.docType,
+        chapter: c.metadata.chapter,
+        section: c.metadata.section,
+        page: c.metadata.page,
+        chunkIndex: c.metadata.chunkIndex,
+        citation: c.metadata.citation,
+        topicId: matchedTopicId || null,
+      };
+    });
 
     await repo.insertChunks(chunks);
 
-    // 3. If uploaded document is a Syllabus, automatically parse and generate Topic Map
+    // 3. If uploaded document is a Syllabus, automatically parse and REPLACE Topic Map
     let generatedTopicsCount = 0;
     if (docType === "syllabus") {
       try {
         const parsedTopics = await generateTopicTreeFromSyllabus(textContent);
         if (parsedTopics && parsedTopics.length > 0) {
-          const topicsToInsert = parsedTopics.map((t, idx) => ({
+          const topicsToInsert = parsedTopics.map((t: any, idx: number) => ({
             id: `top_${documentId}_${idx + 1}`,
             userId: session.userId,
             title: t.title,
@@ -127,8 +143,24 @@ export async function POST(req: Request) {
             examImportance: t.examImportance || 6,
             examFrequency: t.examFrequency || 4,
           }));
-          await repo.saveTopics(topicsToInsert);
+
+          // Replace old syllabus topics with new syllabus topics
+          await repo.replaceTopicsForUser(session.userId, topicsToInsert);
           generatedTopicsCount = topicsToInsert.length;
+
+          // Map all existing chunks to the new syllabus topics
+          const allUserChunks = await repo.getChunksByUser(session.userId);
+          for (const c of allUserChunks) {
+            const matching = topicsToInsert.find(
+              (t: any) =>
+                c.content.toLowerCase().includes(t.title.toLowerCase()) ||
+                c.citation.toLowerCase().includes(t.title.toLowerCase()) ||
+                t.title.toLowerCase().split(" ").some((w: string) => w.length > 3 && c.content.toLowerCase().includes(w))
+            );
+            if (matching && c.topicId !== matching.id) {
+              await repo.updateChunkTopic(c.id, matching.id);
+            }
+          }
         }
       } catch (topicErr) {
         console.warn("Auto topic extraction warning:", topicErr);

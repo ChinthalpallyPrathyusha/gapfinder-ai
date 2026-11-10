@@ -130,6 +130,19 @@ export default function MaterialsPage() {
     }
   }
 
+  async function handleClearAll() {
+    if (!confirm("Are you sure you want to clear all uploaded materials and previous topics to start fresh?")) return;
+    try {
+      const res = await fetch("/api/materials?all=true", { method: "DELETE" });
+      if (res.ok) {
+        toast.success("All materials and syllabus topics cleared!");
+        fetchMaterials();
+      }
+    } catch {
+      toast.error("Failed to clear materials");
+    }
+  }
+
   return (
     <AppShell>
       <div className="space-y-8">
@@ -260,7 +273,18 @@ export default function MaterialsPage() {
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-slate-900 dark:text-white">Uploaded Materials</h2>
-            <span className="text-xs text-slate-500">{documents.length} documents indexed</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">{documents.length} documents indexed</span>
+              {documents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 border border-red-200 dark:border-red-900/50 transition-colors"
+                >
+                  Clear All & Start Fresh
+                </button>
+              )}
+            </div>
           </div>
 
           {documents.length > 0 ? (

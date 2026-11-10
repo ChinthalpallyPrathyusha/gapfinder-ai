@@ -64,36 +64,58 @@ export async function POST(req: Request) {
     const seenChunkIds = new Set<string>();
 
     for (const top of selectedTopics) {
+      // Search BM25 by topic title and keywords without filtering out chunks lacking topicId tags
       const results = retriever.search(`${top.title} ${top.description || ""}`, {
-        topK: 3,
-        topicIdFilter: top.id,
+        topK: 4,
       });
 
       for (const res of results) {
         if (!seenChunkIds.has(res.id)) {
           seenChunkIds.add(res.id);
-          retrievedChunks.push(res);
+          retrievedChunks.push({
+            ...res,
+            topicId: res.topicId || top.id,
+          });
         }
       }
     }
 
-    // If targeted search returned too few, add top general chunks
+    // Explicitly include past paper chunks so quizzes test past exam questions
+    const pastPaperChunks = formattedChunks.filter((c) => c.docType === "past_paper");
+    for (const pp of pastPaperChunks) {
+      if (!seenChunkIds.has(pp.id)) {
+        seenChunkIds.add(pp.id);
+        retrievedChunks.push(pp);
+        if (retrievedChunks.length >= questionCount * 3) break;
+      }
+    }
+
+    // If targeted search returned too few, add user's actual notes and study chunks
     if (retrievedChunks.length < 3) {
-      const generalResults = retriever.search("concepts definitions mechanisms questions", { topK: 5 });
-      for (const res of generalResults) {
+      const candidates = formattedChunks.filter((c) => c.docType === "notes" || c.docType === "past_paper");
+      const fallbackPool = candidates.length > 0 ? candidates : formattedChunks;
+      for (const res of fallbackPool) {
         if (!seenChunkIds.has(res.id)) {
           seenChunkIds.add(res.id);
           retrievedChunks.push(res);
+          if (retrievedChunks.length >= Math.max(3, questionCount * 2)) break;
         }
       }
     }
 
-    // 4. GENERATION (Strictly Grounded in Retrieved Chunks)
+    // 4. GENERATION (Strictly Grounded in Retrieved Chunks from user's current documents)
     const generatedQuestions = await generateQuizQuestionsFromChunks(
       retrievedChunks,
       questionCount,
       difficulty
     );
+
+    if (!generatedQuestions || generatedQuestions.length === 0) {
+      return NextResponse.json(
+        { error: "Could not generate questions from the uploaded documents. Please ensure your notes or past papers have sufficient text." },
+        { status: 400 }
+      );
+    }
 
     const quizId = `quiz_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -102,7 +124,7 @@ export async function POST(req: Request) {
     const fallbackTopicId = selectedTopics[0]?.id || topics[0]?.id || "topic_1";
 
     // Build question database records with chunk text for "view source passage" popover
-    const questionsToSave = generatedQuestions.map((q, idx) => {
+    const questionsToSave = generatedQuestions.map((q: any, idx: number) => {
       const sourceChunk = retrievedChunks.find((c) => c.id === q.sourceChunkId) || retrievedChunks[0];
 
       let assignedTopicId = fallbackTopicId;
@@ -145,7 +167,7 @@ export async function POST(req: Request) {
       quiz: {
         id: quizRecord.id,
         title: quizRecord.title,
-        questions: questionsToSave.map((q) => ({
+        questions: questionsToSave.map((q: any) => ({
           id: q.id,
           topicId: q.topicId,
           questionType: q.questionType,
