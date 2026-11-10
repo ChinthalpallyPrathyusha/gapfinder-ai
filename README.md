@@ -11,7 +11,7 @@ The **Hero Output is a Clinical Diagnosis (the Gap Report)**, not generic chatbo
 ## 🚀 Live Demo & Repository
 
 - **Live Production App:** [https://gapfinder-ai.vercel.app](https://gapfinder-ai.vercel.app) *(or your deployed Vercel domain)*
-- **GitHub Repository:** [https://github.com/your-username/gapfinder-ai](https://github.com/your-username/gapfinder-ai)
+- **GitHub Repository:** [https://github.com/ChinthalpallyPrathyusha/gapfinder-ai](https://github.com/ChinthalpallyPrathyusha/gapfinder-ai)
 
 ### 🔑 Demo Credentials (Pre-Seeded)
 
