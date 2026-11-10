@@ -88,12 +88,13 @@ Your task is to generate EXACTLY ${questionCount} diagnostic questions based SOL
 
 STRICT GROUNDING RULES:
 1. Every single question must be directly verifiable from the provided passages. Do NOT use outside knowledge.
-2. In 'sourceChunkId', put the exact Chunk ID (e.g. "${chunks[0]?.id || 'chunk_0'}").
-3. In 'sourceCitation', provide the readable citation (e.g. "${chunks[0]?.citation || 'Notes, p.1'}").
-4. Provide a balanced mix of MCQ (with 4 realistic choices) and short_answer questions.
-5. In 'explanation', explain WHY the answer is correct based on the passage text.
-6. In 'misconception', note the common conceptual flaw a student who gets this wrong would have.
-7. Difficulty level requested: ${difficulty}.
+2. In 'topicId', put the exact Topic ID stated in the passage (e.g. "${chunks[0]?.topicId || 'topic_1'}").
+3. In 'sourceChunkId', put the exact Chunk ID (e.g. "${chunks[0]?.id || 'chunk_0'}").
+4. In 'sourceCitation', provide the readable citation (e.g. "${chunks[0]?.citation || 'Notes, p.1'}").
+5. Provide a balanced mix of MCQ (with 4 realistic choices) and short_answer questions.
+6. In 'explanation', explain WHY the answer is correct based on the passage text.
+7. In 'misconception', note the common conceptual flaw a student who gets this wrong would have.
+8. Difficulty level requested: ${difficulty}.
 
 RETRIEVED PASSAGES:
 ${contextBlocks}

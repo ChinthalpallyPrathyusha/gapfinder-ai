@@ -163,6 +163,10 @@ async function runMigrations() {
     );
   `;
 
+  await sql`
+    ALTER TABLE quiz_questions DROP CONSTRAINT IF EXISTS quiz_questions_topic_id_fkey;
+  `;
+
   console.log("All tables successfully verified and migrated to Neon!");
 }
 

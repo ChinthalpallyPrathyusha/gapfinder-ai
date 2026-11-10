@@ -63,7 +63,7 @@ export const quizzes = pgTable("quizzes", {
 export const quizQuestions = pgTable("quiz_questions", {
   id: text("id").primaryKey(),
   quizId: text("quiz_id").references(() => quizzes.id, { onDelete: "cascade" }).notNull(),
-  topicId: text("topic_id").references(() => topics.id, { onDelete: "cascade" }).notNull(),
+  topicId: text("topic_id").notNull(),
   questionType: text("question_type", { enum: ["mcq", "short_answer"] }).notNull(),
   prompt: text("prompt").notNull(),
   options: jsonb("options"), // string[] for MCQ

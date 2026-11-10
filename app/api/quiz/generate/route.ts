@@ -97,13 +97,25 @@ export async function POST(req: Request) {
 
     const quizId = `quiz_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
+    // Validate validTopicIds from existing topics
+    const existingTopicIds = new Set(topics.map((t) => t.id));
+    const fallbackTopicId = selectedTopics[0]?.id || topics[0]?.id || "topic_1";
+
     // Build question database records with chunk text for "view source passage" popover
     const questionsToSave = generatedQuestions.map((q, idx) => {
       const sourceChunk = retrievedChunks.find((c) => c.id === q.sourceChunkId) || retrievedChunks[0];
+
+      let assignedTopicId = fallbackTopicId;
+      if (q.topicId && existingTopicIds.has(q.topicId)) {
+        assignedTopicId = q.topicId;
+      } else if (sourceChunk?.topicId && existingTopicIds.has(sourceChunk.topicId)) {
+        assignedTopicId = sourceChunk.topicId;
+      }
+
       return {
         id: `q_${quizId}_${idx + 1}`,
         quizId,
-        topicId: q.topicId || selectedTopics[0]?.id || "topic_general",
+        topicId: assignedTopicId,
         questionType: q.questionType,
         prompt: q.prompt,
         options: q.options || [],
