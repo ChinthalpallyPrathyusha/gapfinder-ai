@@ -47,6 +47,18 @@ export async function seedDemoAccounts() {
   // Seed sample materials and attempts for demo student
   await seedSampleMaterialForUser(student.id);
 
+  // Create base quiz for class analytics
+  await repo.createQuiz(
+    {
+      id: "quiz_demo_1",
+      userId: student.id,
+      title: "Class 10 Biology Diagnostic Baseline",
+      topicIds: SAMPLE_TOPICS.map((t) => t.id),
+      status: "completed",
+    },
+    []
+  );
+
   // Seed 8 demo class students for teacher analytics
   for (const stu of DEMO_CLASS_STUDENTS) {
     const pwd = await hashPassword("Student@12345");
@@ -137,6 +149,7 @@ export async function seedSampleMaterialForUser(userId: string) {
   ].map((c) => ({
     ...c,
     userId,
+    docType: c.metadata.docType,
     chapter: c.metadata.chapter,
     section: c.metadata.section,
     page: c.metadata.page,

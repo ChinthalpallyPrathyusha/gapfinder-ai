@@ -101,6 +101,7 @@ export async function POST(req: Request) {
     const chunks = rawChunks.map((c) => ({
       ...c,
       userId: session.userId,
+      docType: c.metadata.docType,
       chapter: c.metadata.chapter,
       section: c.metadata.section,
       page: c.metadata.page,
